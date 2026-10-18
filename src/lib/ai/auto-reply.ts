@@ -13,6 +13,11 @@ import {
 } from '@/lib/flows/meta-send'
 import { sendTypingIndicator } from '@/lib/whatsapp/meta-api'
 import { checkRateLimit, RATE_LIMITS } from '@/lib/rate-limit'
+import {
+  extractWelcomeMessage,
+  DEFAULT_WELCOME_MESSAGE,
+  stripWelcomeMessage,
+} from './welcome'
 
 interface DispatchArgs {
   /** Tenancy key — drives config, contact, and whatsapp_config lookups. */
@@ -93,8 +98,44 @@ export async function dispatchInboundToAiReply(
     // below (this read can race a concurrent inbound).
     if (conv.ai_reply_count >= config.autoReplyMaxPerConversation) return
 
-    const messages = await buildConversationContext(db, conversationId)
+    const messages = await buildConversationContext(db, conversationId, 10)
     if (messages.length === 0) return
+
+    // 1-to-1 conversation rule & Welcome message trigger:
+    // When a new chat triggers (first turn: no assistant messages yet in this conversation),
+    // send the welcome greeting immediately without LLM delay and wait for the customer's 2nd message.
+    const priorBotMessages = messages.filter((m) => m.role === 'assistant')
+    const isNewChat = (conv.ai_reply_count ?? 0) === 0 && priorBotMessages.length === 0
+
+    if (isNewChat) {
+      const welcomeText =
+        config.welcomeMessage ||
+        extractWelcomeMessage(config.systemPrompt) ||
+        DEFAULT_WELCOME_MESSAGE
+
+      const { data: claimed, error: claimErr } = await db.rpc(
+        'claim_ai_reply_slot',
+        {
+          conversation_id: conversationId,
+          max_replies: config.autoReplyMaxPerConversation,
+        },
+      )
+      if (claimErr) {
+        console.error('[ai auto-reply] claim_ai_reply_slot failed:', claimErr)
+        return
+      }
+      if (claimed !== true) return
+
+      await engineSendText({
+        accountId,
+        userId: configOwnerUserId,
+        conversationId,
+        contactId,
+        text: welcomeText,
+        aiGenerated: true,
+      })
+      return
+    }
 
     // Account-wide throttle on the shared BYO key. The per-conversation
     // cap bounds one thread; this bounds a burst across many threads (a
@@ -131,7 +172,7 @@ export async function dispatchInboundToAiReply(
     )
 
     const systemPrompt = buildSystemPrompt({
-      userPrompt: config.systemPrompt,
+      userPrompt: stripWelcomeMessage(config.systemPrompt),
       mode: 'auto_reply',
       knowledge,
     })

@@ -192,3 +192,108 @@ describe('generateReply — Anthropic', () => {
     expect(body.messages).toHaveLength(1)
   })
 })
+
+describe('generateReply — Gemini', () => {
+  it('calls the generateContent endpoint with x-goog-api-key and parses text and usage', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: 'Hello from Gemini!' }],
+              role: 'model',
+            },
+            finishReason: 'STOP',
+          },
+        ],
+        usageMetadata: {
+          promptTokenCount: 25,
+          candidatesTokenCount: 7,
+          totalTokenCount: 32,
+        },
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    const res = await generateReply({
+      config: config({ provider: 'gemini', model: 'gemini-2.5-flash', apiKey: 'AIzaSy-test' }),
+      systemPrompt: 'You are an assistant',
+      messages: [{ role: 'user', content: 'Hello' }],
+    })
+
+    expect(res).toEqual({
+      text: 'Hello from Gemini!',
+      handoff: false,
+      usage: { promptTokens: 25, completionTokens: 7, totalTokens: 32 },
+    })
+
+    const [url, opts] = fetchMock.mock.calls[0]
+    expect(url).toContain('generativelanguage.googleapis.com')
+    expect(url).toContain('gemini-2.5-flash:generateContent')
+    expect(opts.headers['x-goog-api-key']).toBe('AIzaSy-test')
+
+    const body = JSON.parse(opts.body)
+    expect(body.systemInstruction.parts[0].text).toBe('You are an assistant')
+    expect(body.contents[0].role).toBe('user')
+    expect(body.contents[0].parts[0].text).toBe('Hello')
+  })
+
+  it('detects handoff in Gemini output', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        okResponse({
+          candidates: [
+            {
+              content: {
+                parts: [{ text: 'Please wait while I connect you [[HANDOFF]]' }],
+                role: 'model',
+              },
+            },
+          ],
+        }),
+      ),
+    )
+    const res = await generateReply({
+      config: config({ provider: 'gemini' }),
+      systemPrompt: 'sys',
+      messages: [{ role: 'user', content: 'Agent please' }],
+    })
+    expect(res.handoff).toBe(true)
+    expect(res.text).toBe('Please wait while I connect you')
+  })
+
+  it('maps assistant roles to model and merges consecutive messages', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      okResponse({
+        candidates: [
+          {
+            content: { parts: [{ text: 'Response' }], role: 'model' },
+          },
+        ],
+      }),
+    )
+    vi.stubGlobal('fetch', fetchMock)
+
+    await generateReply({
+      config: config({ provider: 'gemini' }),
+      systemPrompt: 'sys',
+      messages: [
+        { role: 'assistant', content: 'Greeting' },
+        { role: 'user', content: 'Hi 1' },
+        { role: 'user', content: 'Hi 2' },
+        { role: 'assistant', content: 'How can I help?' },
+        { role: 'user', content: 'Need info' },
+      ],
+    })
+
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body)
+    // Leading assistant greeting is dropped so it starts with user
+    expect(body.contents[0].role).toBe('user')
+    expect(body.contents[0].parts[0].text).toContain('Hi 1\n\nHi 2')
+    expect(body.contents[1].role).toBe('model')
+    expect(body.contents[1].parts[0].text).toBe('How can I help?')
+    expect(body.contents[2].role).toBe('user')
+    expect(body.contents[2].parts[0].text).toBe('Need info')
+  })
+})

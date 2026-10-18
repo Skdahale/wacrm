@@ -8,8 +8,10 @@ import { buildSystemPrompt } from '@/lib/ai/defaults'
 import { latestUserMessage } from '@/lib/ai/query'
 import { AiError, type ChatMessage } from '@/lib/ai/types'
 
-// Keep the tested transcript bounded, mirroring the live context window.
-const MAX_TURNS = 20
+import { stripWelcomeMessage } from '@/lib/ai/welcome'
+
+// Keep the tested transcript bounded to the past 10 messages (matching live context window).
+const MAX_TURNS = 10
 
 /**
  * POST /api/ai/playground  (agent+)
@@ -79,7 +81,7 @@ export async function POST(request: Request) {
       latestUserMessage(messages),
     )
     const systemPrompt = buildSystemPrompt({
-      userPrompt: config.systemPrompt,
+      userPrompt: stripWelcomeMessage(config.systemPrompt),
       mode: 'auto_reply',
       knowledge,
     })

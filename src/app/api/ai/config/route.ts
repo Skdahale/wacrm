@@ -9,6 +9,11 @@ import { encrypt, decrypt } from '@/lib/whatsapp/encryption'
 import { validateAiCredentials } from '@/lib/ai/validate'
 import { embedTexts } from '@/lib/ai/embeddings'
 import { AiError, type AiProvider } from '@/lib/ai/types'
+import {
+  extractWelcomeMessage,
+  embedWelcomeMessage,
+  stripWelcomeMessage,
+} from '@/lib/ai/welcome'
 
 function bad(message: string) {
   return NextResponse.json({ error: message }, { status: 400 })
@@ -47,11 +52,14 @@ export async function GET() {
     // The keys are selected only to derive the has_* flags; neither is
     // returned to the client.
     const { api_key, embeddings_api_key, ...safe } = data
+    const welcomeMessage = extractWelcomeMessage(data.system_prompt)
     return NextResponse.json({
       configured: true,
       has_key: !!api_key,
       has_embeddings_key: !!embeddings_api_key,
+      welcome_message: welcomeMessage,
       ...safe,
+      system_prompt: stripWelcomeMessage(data.system_prompt),
     })
   } catch (err) {
     return toErrorResponse(err)
@@ -78,16 +86,22 @@ export async function POST(request: Request) {
     if (!body || typeof body !== 'object') return bad('Invalid request body')
 
     const provider = body.provider as AiProvider
-    if (provider !== 'openai' && provider !== 'anthropic') {
-      return bad('provider must be "openai" or "anthropic"')
+    if (provider !== 'openai' && provider !== 'anthropic' && provider !== 'gemini') {
+      return bad('provider must be "openai", "anthropic", or "gemini"')
     }
     const model = typeof body.model === 'string' ? body.model.trim() : ''
     if (!model) return bad('model is required')
 
-    const systemPrompt =
+    const rawSystemPrompt =
       typeof body.system_prompt === 'string' && body.system_prompt.trim()
         ? body.system_prompt.trim()
         : null
+    const welcomeMessage =
+      typeof body.welcome_message === 'string' ? body.welcome_message.trim() : null
+    const systemPrompt =
+      body.welcome_message !== undefined
+        ? embedWelcomeMessage(rawSystemPrompt, welcomeMessage)
+        : rawSystemPrompt
     const isActive = body.is_active === true
     const autoReplyEnabled = body.auto_reply_enabled === true
 
@@ -221,9 +235,9 @@ export async function POST(request: Request) {
         .update(encryptedKey ? { ...shared, api_key: encryptedKey } : shared)
         .eq('account_id', accountId)
       if (upErr) {
-        console.error('[ai/config POST] update error:', upErr)
+        console.error('[ai/config POST] update error:', upErr.message, upErr.details, upErr)
         return NextResponse.json(
-          { error: 'Failed to save AI configuration' },
+          { error: upErr.message || 'Failed to save AI configuration' },
           { status: 500 },
         )
       }
@@ -235,9 +249,9 @@ export async function POST(request: Request) {
         ...shared,
       })
       if (insErr) {
-        console.error('[ai/config POST] insert error:', insErr)
+        console.error('[ai/config POST] insert error:', insErr.message, insErr.details, insErr)
         return NextResponse.json(
-          { error: 'Failed to save AI configuration' },
+          { error: insErr.message || 'Failed to save AI configuration' },
           { status: 500 },
         )
       }

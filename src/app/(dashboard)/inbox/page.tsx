@@ -429,6 +429,12 @@ function InboxPageInner() {
           setActiveConversation(match);
           setActiveContact(match.contact ?? null);
           setMessages([]);
+          // Owner opened chat via deep link: pause AI bot so owner can reply
+          fetch(`/api/ai/autoreply/${match.id}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paused: true, assign_to_me: true }),
+          }).catch(() => {});
           // Mirror the optimistic unread reset that handleSelectConversation
           // does — the user just deep-linked into this conv, treat that the
           // same as a click. Leaves activeConversation.unread_count alone so
@@ -446,6 +452,32 @@ function InboxPageInner() {
     [deepLinkConvId, activeConversation?.id]
   );
 
+  const activeConversationRef = useRef<Conversation | null>(null);
+  useEffect(() => {
+    activeConversationRef.current = activeConversation;
+  }, [activeConversation]);
+
+  // Clean up on tab close / reload: resume AI if owner leaves
+  useEffect(() => {
+    const handleUnload = () => {
+      const current = activeConversationRef.current;
+      if (current) {
+        fetch(`/api/ai/autoreply/${current.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paused: false }),
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+    window.addEventListener("pagehide", handleUnload);
+    window.addEventListener("beforeunload", handleUnload);
+    return () => {
+      window.removeEventListener("pagehide", handleUnload);
+      window.removeEventListener("beforeunload", handleUnload);
+    };
+  }, []);
+
   const handleSelectConversation = useCallback(
     (conv: Conversation) => {
       // Re-clicking the already-active conversation would clear the
@@ -453,7 +485,24 @@ function InboxPageInner() {
       // when conversationId changes — so messages would stay empty until
       // the user navigated away and back. Bail out early instead.
       if (activeConversation?.id === conv.id) return;
-      setActiveConversation(conv);
+
+      // Resume previous conversation's AI bot if we are switching away
+      if (activeConversation && activeConversation.id !== conv.id) {
+        fetch(`/api/ai/autoreply/${activeConversation.id}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paused: false }),
+        }).catch(() => {});
+      }
+
+      // Owner opened chat: pause AI bot so owner can reply
+      fetch(`/api/ai/autoreply/${conv.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: true, assign_to_me: true }),
+      }).catch(() => {});
+
+      setActiveConversation({ ...conv, ai_autoreply_disabled: true });
       setActiveContact(conv.contact ?? null);
       setMessages([]);
       // Optimistically clear the unread badge for this conv. The
@@ -485,13 +534,19 @@ function InboxPageInner() {
       // replace() to avoid polluting browser history with every click.
       router.replace(`/inbox?c=${conv.id}`, { scroll: false });
     },
-    [activeConversation?.id, router]
+    [activeConversation, router]
   );
 
-  // Mobile "back" — deselect the conversation so the list pane comes
-  // back. Also clears the ?c= param so a refresh lands on the list
-  // instead of re-opening the thread the user just backed out of.
+  // Mobile "back" or Close Chat header button — deselect the conversation
+  // and resume the AI bot so it can reply to any new customer messages.
   const handleCloseConversation = useCallback(() => {
+    if (activeConversation) {
+      fetch(`/api/ai/autoreply/${activeConversation.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paused: false }),
+      }).catch(() => {});
+    }
     setActiveConversation(null);
     setActiveContact(null);
     setMessages([]);
@@ -499,7 +554,7 @@ function InboxPageInner() {
     // the user later visits /inbox?c=<same-id> — desirable UX.
     autoSelectedForDeepLinkRef.current = null;
     router.replace("/inbox", { scroll: false });
-  }, [router]);
+  }, [activeConversation, router]);
 
 
   const handleMessagesLoaded = useCallback((loaded: Message[]) => {

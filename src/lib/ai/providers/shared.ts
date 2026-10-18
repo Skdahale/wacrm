@@ -69,8 +69,12 @@ export async function providerHttpError(
   }
 
   const { status } = res
+  const isAuthError =
+    status === 401 ||
+    status === 403 ||
+    (status === 400 && /api[ _]?key/i.test(detail))
   const code =
-    status === 401 || status === 403
+    isAuthError
       ? 'invalid_key'
       : status === 429
         ? 'rate_limited'

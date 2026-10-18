@@ -17,19 +17,53 @@ interface Turn {
 export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
   const t = useTranslations('Agents.playground');
   const [turns, setTurns] = useState<Turn[]>([]);
+  const [welcomeMessage, setWelcomeMessage] = useState<string>('');
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/ai/config');
+        const data = await res.json().catch(() => ({}));
+        if (!cancelled) {
+          const welcome = data?.welcome_message || 'Hello! 👋 Welcome. How can I help you today?';
+          setWelcomeMessage(welcome);
+          setTurns([{ role: 'assistant', content: welcome }]);
+        }
+      } catch {
+        if (!cancelled) {
+          const fallback = 'Hello! 👋 Welcome. How can I help you today?';
+          setWelcomeMessage(fallback);
+          setTurns([{ role: 'assistant', content: fallback }]);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [turns, sending]);
+
+  const resetPlayground = () => {
+    if (welcomeMessage) {
+      setTurns([{ role: 'assistant', content: welcomeMessage }]);
+    } else {
+      setTurns([]);
+    }
+  };
 
   const send = async () => {
     const text = input.trim();
     if (!text || sending) return;
 
-    const next: Turn[] = [...turns, { role: 'user', content: text }];
+    const userTurn: Turn = { role: 'user', content: text };
+    const next: Turn[] = [...turns, userTurn].slice(-10);
     setTurns(next);
     setInput('');
     setSending(true);
@@ -37,7 +71,7 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
       const res = await fetch('/api/ai/playground', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        // Send only role+content — the server ignores anything else.
+        // Send only role+content (past 10 turns) — the server processes this context.
         body: JSON.stringify({
           messages: next.map((t) => ({ role: t.role, content: t.content })),
         }),
@@ -95,8 +129,8 @@ export function AiPlayground({ onGoToSetup }: { onGoToSetup?: () => void }) {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => setTurns([])}
-          disabled={turns.length === 0 || sending}
+          onClick={resetPlayground}
+          disabled={sending}
           className="text-muted-foreground"
         >
           <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> {t('reset')}

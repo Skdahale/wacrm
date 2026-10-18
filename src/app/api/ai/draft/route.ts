@@ -10,6 +10,7 @@ import { latestUserMessage } from '@/lib/ai/query'
 import { logAiUsage } from '@/lib/ai/usage'
 import { supabaseAdmin } from '@/lib/ai/admin-client'
 import { AiError } from '@/lib/ai/types'
+import { stripWelcomeMessage } from '@/lib/ai/welcome'
 
 /**
  * POST /api/ai/draft  (agent+)
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
     )
 
     const systemPrompt = buildSystemPrompt({
-      userPrompt: config.systemPrompt,
+      userPrompt: stripWelcomeMessage(config.systemPrompt),
       mode: 'draft',
       knowledge,
     })

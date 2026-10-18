@@ -6,7 +6,7 @@
 // whether the account is on OpenAI or Anthropic.
 // ============================================================
 
-export type AiProvider = 'openai' | 'anthropic'
+export type AiProvider = 'openai' | 'anthropic' | 'gemini'
 
 /**
  * Account AI setup, decrypted and ready to use. Produced by
@@ -29,6 +29,8 @@ export interface AiConfig {
    *  knowledge base is embedded and semantic retrieval turns on; when
    *  null, retrieval falls back to lexical full-text search. */
   embeddingsApiKey: string | null
+  /** Welcome message sent on the very first turn of a new conversation. */
+  welcomeMessage?: string | null
 }
 
 /** A single conversation turn in the shape both providers accept. */

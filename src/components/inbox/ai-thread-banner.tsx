@@ -137,12 +137,16 @@ export function AiThreadBanner({
   // Account has no auto-reply → nothing to show. (Still loading → nothing.)
   if (!autoReplyOn) return null;
 
-  // Paused here (a human took over, or the model handed off).
-  if (paused) {
+  // Paused here (a human took over, owner opened chat, or model handed off).
+  if (paused || assignedAgentId) {
     return (
       <Banner tone="muted">
         <div className="min-w-0 flex-1">
-          <p className="font-medium text-foreground">{t("pausedTitle")}</p>
+          <p className="font-medium text-foreground">
+            {assignedAgentId === currentUserId
+              ? "Owner is in chat — AI bot is paused so you can reply"
+              : t("pausedTitle")}
+          </p>
           {handoffSummary && (
             <p className="truncate text-muted-foreground" title={handoffSummary}>
               {handoffSummary}
@@ -155,9 +159,6 @@ export function AiThreadBanner({
       </Banner>
     );
   }
-
-  // Active, but a human already owns it → the bot won't fire; no banner.
-  if (assignedAgentId) return null;
 
   // Active on this thread.
   return (

@@ -41,11 +41,13 @@ const HANDOFF_QUEUE = '__queue__';
 const PROVIDER_LABEL: Record<AiProvider, string> = {
   openai: 'OpenAI',
   anthropic: 'Anthropic (Claude)',
+  gemini: 'Google Gemini',
 };
 
 const KEY_PLACEHOLDER: Record<AiProvider, string> = {
   openai: 'sk-...',
   anthropic: 'sk-ant-...',
+  gemini: 'AIzaSy...',
 };
 
 export function AiConfig() {
@@ -69,6 +71,7 @@ export function AiConfig() {
   const [embeddingsKeyEdited, setEmbeddingsKeyEdited] = useState(false);
   const [hasStoredEmbeddingsKey, setHasStoredEmbeddingsKey] = useState(false);
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [welcomeMessage, setWelcomeMessage] = useState('');
   const [isActive, setIsActive] = useState(false);
   const [autoReplyEnabled, setAutoReplyEnabled] = useState(false);
   const [maxPerConversation, setMaxPerConversation] = useState(3);
@@ -96,6 +99,7 @@ export function AiConfig() {
         setProvider(data.provider);
         setModel(data.model);
         setSystemPrompt(data.system_prompt ?? '');
+        setWelcomeMessage(data.welcome_message ?? '');
         setIsActive(data.is_active);
         setAutoReplyEnabled(data.auto_reply_enabled);
         setMaxPerConversation(data.auto_reply_max_per_conversation ?? 3);
@@ -131,6 +135,7 @@ export function AiConfig() {
     const isDefaultModel =
       model === AI_PROVIDER_DEFAULT_MODEL.openai ||
       model === AI_PROVIDER_DEFAULT_MODEL.anthropic ||
+      model === AI_PROVIDER_DEFAULT_MODEL.gemini ||
       model.trim() === '';
     if (isDefaultModel) setModel(AI_PROVIDER_DEFAULT_MODEL[next]);
   };
@@ -147,6 +152,7 @@ export function AiConfig() {
     api_key: keyPayload(),
     embeddings_api_key: embeddingsKeyPayload(),
     system_prompt: systemPrompt.trim() || null,
+    welcome_message: welcomeMessage.trim() || null,
     is_active: isActive,
     auto_reply_enabled: autoReplyEnabled,
     auto_reply_max_per_conversation: maxPerConversation,
@@ -218,6 +224,7 @@ export function AiConfig() {
         setIsActive(false);
         setAutoReplyEnabled(false);
         setSystemPrompt('');
+        setWelcomeMessage('');
         setHandoffAgentId('');
       } else {
         const data = await res.json();
@@ -280,6 +287,9 @@ export function AiConfig() {
                     <SelectItem value="openai">{PROVIDER_LABEL.openai}</SelectItem>
                     <SelectItem value="anthropic">
                       {PROVIDER_LABEL.anthropic}
+                    </SelectItem>
+                    <SelectItem value="gemini">
+                      {PROVIDER_LABEL.gemini}
                     </SelectItem>
                   </SelectContent>
                 </Select>
@@ -399,6 +409,23 @@ export function AiConfig() {
                 rows={5}
                 disabled={disabled}
               />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="ai-welcome">
+                Welcome Message (Sent on new chat trigger)
+              </Label>
+              <Textarea
+                id="ai-welcome"
+                value={welcomeMessage}
+                onChange={(e) => setWelcomeMessage(e.target.value)}
+                placeholder="Hello! 👋 Welcome to our service. How can I help you today?"
+                rows={4}
+                disabled={disabled}
+              />
+              <p className="text-xs text-muted-foreground">
+                Sent automatically when a customer triggers a new chat. The AI bot sends this welcome message, then waits for the customer&apos;s second message before analyzing and replying based on the knowledge base.
+              </p>
             </div>
 
             <div className="flex items-center justify-between gap-4 rounded-md border border-border p-3">

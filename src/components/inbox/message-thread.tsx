@@ -27,6 +27,7 @@ import {
   RefreshCw,
   PanelRightOpen,
   PanelRightClose,
+  X,
 } from "lucide-react";
 import { format, isToday, isYesterday, differenceInHours } from "date-fns";
 import { useTranslations } from "next-intl";
@@ -241,7 +242,7 @@ export function MessageThread({
       .reverse()
       .find((m) => m.sender_type === "customer");
 
-    if (!lastCustomerMsg) return { expired: true, remaining: tTimer("noCustomerMessages") };
+    if (!lastCustomerMsg) return { expired: false, remaining: "" };
 
     const hoursSince = differenceInHours(new Date(), new Date(lastCustomerMsg.created_at));
     const expired = hoursSince >= 24;
@@ -988,6 +989,20 @@ export function MessageThread({
               <RefreshCw
                 className={cn("h-3.5 w-3.5", isRefreshing && "animate-spin")}
               />
+            </button>
+          )}
+
+          {/* Close Chat button — unselects thread and resumes AI bot */}
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              aria-label="Close chat"
+              title="Close chat (resumes AI agent)"
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              <X className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">Close Chat</span>
             </button>
           )}
 
