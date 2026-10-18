@@ -1,6 +1,7 @@
 import mammoth from 'mammoth'
 import * as XLSX from 'xlsx'
-import pdfParse from 'pdf-parse'
+// @ts-expect-error - pdf-parse lacks type declarations for its internal lib entrypoint
+import pdfParse from 'pdf-parse/lib/pdf-parse.js'
 
 export interface ParsedDocument {
   text: string
